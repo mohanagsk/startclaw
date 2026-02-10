@@ -3,7 +3,7 @@
 import { useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 
-type Step = 'telegram' | 'token' | 'ai' | 'deploy' | 'done'
+type Step = 'telegram' | 'token' | 'userid' | 'ai' | 'deploy' | 'done'
 
 function OnboardContent() {
   const searchParams = useSearchParams()
@@ -11,6 +11,7 @@ function OnboardContent() {
   
   const [step, setStep] = useState<Step>('telegram')
   const [telegramToken, setTelegramToken] = useState('')
+  const [telegramUserId, setTelegramUserId] = useState('')
   const [aiProvider, setAiProvider] = useState('gemini')
   const [apiKey, setApiKey] = useState('')
   const [isValidating, setIsValidating] = useState(false)
@@ -34,7 +35,7 @@ function OnboardContent() {
       
       if (data.valid) {
         setBotInfo(data.bot)
-        setStep('ai')
+        setStep('userid')
       } else {
         setError(data.error || 'Invalid token')
       }
@@ -55,8 +56,9 @@ function OnboardContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           telegramToken,
+          telegramUserId,
           aiProvider,
-          apiKey: aiProvider !== 'groq' ? apiKey : undefined,
+          apiKey: aiProvider !== 'gemini' && aiProvider !== 'groq' ? apiKey : undefined,
           plan
         })
       })
@@ -96,15 +98,15 @@ function OnboardContent() {
       
       {/* Progress */}
       <div className="flex items-center justify-center gap-2 mb-12">
-        {['telegram', 'token', 'ai', 'deploy', 'done'].map((s, i) => (
+        {['telegram', 'token', 'userid', 'ai', 'deploy', 'done'].map((s, i) => (
           <div key={s} className="flex items-center">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
               step === s ? 'bg-lobster-500' : 
-              ['telegram', 'token', 'ai', 'deploy', 'done'].indexOf(step) > i ? 'bg-green-500' : 'bg-gray-800'
+              ['telegram', 'token', 'userid', 'ai', 'deploy', 'done'].indexOf(step) > i ? 'bg-green-500' : 'bg-gray-800'
             }`}>
-              {['telegram', 'token', 'ai', 'deploy', 'done'].indexOf(step) > i ? '✓' : i + 1}
+              {['telegram', 'token', 'userid', 'ai', 'deploy', 'done'].indexOf(step) > i ? '✓' : i + 1}
             </div>
-            {i < 4 && <div className="w-8 h-0.5 bg-gray-800" />}
+            {i < 5 && <div className="w-8 h-0.5 bg-gray-800" />}
           </div>
         ))}
       </div>
@@ -210,10 +212,81 @@ function OnboardContent() {
           </div>
         )}
         
-        {/* Step 3: Choose AI */}
+        {/* Step 3: Your Telegram ID */}
+        {step === 'userid' && (
+          <div>
+            <h2 className="text-2xl font-bold mb-2">Step 3: Your Telegram ID</h2>
+            {botInfo && (
+              <p className="text-green-400 mb-6">✓ Bot validated: @{botInfo.username}</p>
+            )}
+            
+            <div className="space-y-6">
+              <div className="bg-gray-800 rounded-xl p-6">
+                <h3 className="font-semibold mb-4">How to get your Telegram ID:</h3>
+                <ol className="space-y-4 text-gray-300">
+                  <li className="flex gap-3">
+                    <span className="bg-lobster-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm flex-shrink-0">1</span>
+                    <span>Open Telegram and message <code className="bg-gray-700 px-2 py-0.5 rounded">@userinfobot</code></span>
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="bg-lobster-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm flex-shrink-0">2</span>
+                    <span>It will reply with your user ID (a number like <code className="bg-gray-700 px-2 py-0.5 rounded">123456789</code>)</span>
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="bg-lobster-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm flex-shrink-0">3</span>
+                    <span>Copy and paste that number below</span>
+                  </li>
+                </ol>
+              </div>
+              
+              <a 
+                href="https://t.me/userinfobot" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="block w-full bg-blue-500 text-white py-3 rounded-lg text-center font-semibold hover:bg-blue-400 transition-colors"
+              >
+                Open @userinfobot →
+              </a>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">
+                  Your Telegram User ID
+                </label>
+                <input
+                  type="text"
+                  value={telegramUserId}
+                  onChange={(e) => setTelegramUserId(e.target.value.replace(/\D/g, ''))}
+                  placeholder="123456789"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-lobster-500"
+                />
+                <p className="text-sm text-gray-500 mt-2">
+                  This ensures only YOU can chat with your bot
+                </p>
+              </div>
+              
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setStep('token')}
+                  className="px-6 py-3 rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors"
+                >
+                  ← Back
+                </button>
+                <button
+                  onClick={() => setStep('ai')}
+                  disabled={!telegramUserId}
+                  className="flex-1 bg-lobster-500 py-3 rounded-lg font-semibold hover:bg-lobster-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Continue →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Step 4: Choose AI */}
         {step === 'ai' && (
           <div>
-            <h2 className="text-2xl font-bold mb-2">Step 3: Choose Your AI</h2>
+            <h2 className="text-2xl font-bold mb-2">Step 4: Choose Your AI</h2>
             {botInfo && (
               <p className="text-green-400 mb-6">✓ Bot validated: @{botInfo.username}</p>
             )}
@@ -267,7 +340,7 @@ function OnboardContent() {
               
               <div className="flex gap-4">
                 <button
-                  onClick={() => setStep('token')}
+                  onClick={() => setStep('userid')}
                   className="px-6 py-3 rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors"
                 >
                   ← Back
@@ -284,10 +357,10 @@ function OnboardContent() {
           </div>
         )}
         
-        {/* Step 4: Deploy */}
+        {/* Step 5: Deploy */}
         {step === 'deploy' && (
           <div>
-            <h2 className="text-2xl font-bold mb-6">Step 4: Deploy Your Assistant</h2>
+            <h2 className="text-2xl font-bold mb-6">Step 5: Deploy Your Assistant</h2>
             
             <div className="space-y-6">
               <div className="bg-gray-800 rounded-xl p-6">

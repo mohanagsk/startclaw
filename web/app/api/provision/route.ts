@@ -8,10 +8,14 @@ const GCP_API_SECRET = process.env.GCP_API_SECRET || ''
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { telegramToken, aiProvider, apiKey, plan } = body
+    const { telegramToken, telegramUserId, aiProvider, apiKey, plan } = body
     
     if (!telegramToken) {
       return NextResponse.json({ error: 'Telegram token required' }, { status: 400 })
+    }
+    
+    if (!telegramUserId) {
+      return NextResponse.json({ error: 'Telegram user ID required' }, { status: 400 })
     }
     
     // Generate unique user ID
@@ -27,7 +31,8 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         userId,
         telegramToken,
-        aiProvider: aiProvider || 'groq',
+        ownerIds: [telegramUserId],
+        aiProvider: aiProvider || 'gemini',
         apiKey,
         plan: plan || 'free'
       })
