@@ -64,6 +64,13 @@ function OnboardContent() {
       const data = await res.json()
       
       if (data.success) {
+        // Save to localStorage for dashboard
+        localStorage.setItem('startclaw_instance', JSON.stringify({
+          userId: data.userId,
+          botUsername: botInfo?.username,
+          subdomain: data.subdomain,
+          url: data.url
+        }))
         setResult(data)
         setStep('done')
       } else {
@@ -357,7 +364,7 @@ function OnboardContent() {
                 Open in Telegram →
               </a>
               <a
-                href="/dashboard"
+                href={`/dashboard?id=${result.userId}`}
                 className="block w-full bg-gray-800 py-3 rounded-lg font-semibold hover:bg-gray-700 transition-colors"
               >
                 Go to Dashboard
