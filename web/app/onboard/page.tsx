@@ -17,7 +17,7 @@ function OnboardContent() {
   const [isValidating, setIsValidating] = useState(false)
   const [isDeploying, setIsDeploying] = useState(false)
   const [error, setError] = useState('')
-  const [result, setResult] = useState<{ subdomain: string; url: string } | null>(null)
+  const [result, setResult] = useState<{ userId: string; subdomain: string; url: string } | null>(null)
   const [botInfo, setBotInfo] = useState<{ username: string } | null>(null)
 
   const validateToken = async () => {
