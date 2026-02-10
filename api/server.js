@@ -265,13 +265,14 @@ app.post('/provision', authMiddleware, async (req, res) => {
         const port = await getNextPort();
         
         // Set resource limits based on plan
-        let memory = '1g';
+        // Free tier needs 1280m/768MB heap minimum - OpenClaw uses ~500MB at startup
+        let memory = '1280m';
         let cpus = '0.5';
-        let heapSize = '512';
+        let heapSize = '768';
         if (plan === 'starter') {
-            memory = '1g';
+            memory = '1280m';
             cpus = '0.5';
-            heapSize = '512';
+            heapSize = '768';
         } else if (plan === 'pro') {
             memory = '1536m';
             cpus = '1.0';
