@@ -19,6 +19,7 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const API_SECRET = process.env.API_SECRET || 'change-me-in-production';
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const DATA_DIR = '/opt/startclaw/data';
 const CADDY_FILE = '/etc/caddy/Caddyfile';
 const BASE_PORT = 18001;
@@ -155,11 +156,17 @@ const createConfig = (telegramToken, aiProvider, apiKey, ownerIds, gatewayToken)
     };
     
     // Set AI provider API key and model
-    if (aiProvider === 'groq') {
+    if (aiProvider === 'gemini' || aiProvider === 'google') {
+        const geminiKey = apiKey || GEMINI_API_KEY;
+        if (geminiKey) {
+            config.env.vars.GEMINI_API_KEY = geminiKey;
+            // Gemini 2.0 Flash - fast and has 1M TPM free tier!
+            config.agents.defaults.model.primary = 'google/gemini-2.0-flash';
+        }
+    } else if (aiProvider === 'groq') {
         const groqKey = apiKey || GROQ_API_KEY;
         if (groqKey) {
             config.env.vars.GROQ_API_KEY = groqKey;
-            // Use gemma2-9b-it for free tier (higher TPM limits than llama)
             config.agents.defaults.model.primary = 'groq/gemma2-9b-it';
         }
     } else if (aiProvider === 'anthropic' && apiKey) {
@@ -171,8 +178,12 @@ const createConfig = (telegramToken, aiProvider, apiKey, ownerIds, gatewayToken)
     } else if (aiProvider === 'openrouter' && apiKey) {
         config.env.vars.OPENROUTER_API_KEY = apiKey;
         config.agents.defaults.model.primary = 'openrouter/anthropic/claude-3.5-sonnet';
+    } else if (GEMINI_API_KEY) {
+        // Default: Gemini free tier (1M TPM - much better than Groq's 12K!)
+        config.env.vars.GEMINI_API_KEY = GEMINI_API_KEY;
+        config.agents.defaults.model.primary = 'google/gemini-2.0-flash';
     } else if (GROQ_API_KEY) {
-        // Fallback to Groq free tier
+        // Fallback to Groq
         config.env.vars.GROQ_API_KEY = GROQ_API_KEY;
         config.agents.defaults.model.primary = 'groq/gemma2-9b-it';
     }

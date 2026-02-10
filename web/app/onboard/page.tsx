@@ -11,7 +11,7 @@ function OnboardContent() {
   
   const [step, setStep] = useState<Step>('telegram')
   const [telegramToken, setTelegramToken] = useState('')
-  const [aiProvider, setAiProvider] = useState('groq')
+  const [aiProvider, setAiProvider] = useState('gemini')
   const [apiKey, setApiKey] = useState('')
   const [isValidating, setIsValidating] = useState(false)
   const [isDeploying, setIsDeploying] = useState(false)
@@ -221,9 +221,10 @@ function OnboardContent() {
             <div className="space-y-6">
               <div className="space-y-3">
                 {[
-                  { id: 'groq', name: 'Groq (Free)', desc: 'Llama 3.3 70B — Fast and free', recommended: true },
+                  { id: 'gemini', name: 'Google Gemini (Free)', desc: 'Gemini 2.0 Flash — Fast, smart, and free', recommended: true },
                   { id: 'anthropic', name: 'Anthropic', desc: 'Claude — Best quality (requires API key)' },
-                  { id: 'openai', name: 'OpenAI', desc: 'GPT-4 — Popular choice (requires API key)' }
+                  { id: 'openai', name: 'OpenAI', desc: 'GPT-4 — Popular choice (requires API key)' },
+                  { id: 'groq', name: 'Groq', desc: 'Llama 3 — Ultra fast (requires API key)' }
                 ].map((provider) => (
                   <button
                     key={provider.id}
@@ -249,7 +250,7 @@ function OnboardContent() {
                 ))}
               </div>
               
-              {aiProvider !== 'groq' && (
+              {aiProvider !== 'gemini' && aiProvider !== 'groq' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-2">
                     {aiProvider === 'anthropic' ? 'Anthropic' : 'OpenAI'} API Key
@@ -273,7 +274,7 @@ function OnboardContent() {
                 </button>
                 <button
                   onClick={() => setStep('deploy')}
-                  disabled={aiProvider !== 'groq' && !apiKey}
+                  disabled={aiProvider !== 'gemini' && aiProvider !== 'groq' && !apiKey}
                   className="flex-1 bg-lobster-500 py-3 rounded-lg font-semibold hover:bg-lobster-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Continue →
