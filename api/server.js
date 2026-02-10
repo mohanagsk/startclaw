@@ -177,7 +177,8 @@ const createConfig = (telegramToken, aiProvider, apiKey, ownerIds, gatewayToken)
         config.agents.defaults.model.primary = 'openai/gpt-4o';
     } else if (aiProvider === 'openrouter' && apiKey) {
         config.env.vars.OPENROUTER_API_KEY = apiKey;
-        config.agents.defaults.model.primary = 'openrouter/anthropic/claude-3.5-sonnet';
+        // Use free model - Gemini 2.0 Flash (free via OpenRouter)
+        config.agents.defaults.model.primary = 'openrouter/google/gemini-2.0-flash-exp:free';
     } else if (GEMINI_API_KEY) {
         // Default: Gemini free tier (1M TPM - much better than Groq's 12K!)
         config.env.vars.GEMINI_API_KEY = GEMINI_API_KEY;

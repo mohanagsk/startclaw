@@ -12,7 +12,7 @@ function OnboardContent() {
   const [step, setStep] = useState<Step>('telegram')
   const [telegramToken, setTelegramToken] = useState('')
   const [telegramUserId, setTelegramUserId] = useState('')
-  const [aiProvider, setAiProvider] = useState('gemini')
+  const [aiProvider, setAiProvider] = useState('openrouter')
   const [apiKey, setApiKey] = useState('')
   const [isValidating, setIsValidating] = useState(false)
   const [isDeploying, setIsDeploying] = useState(false)
@@ -58,7 +58,7 @@ function OnboardContent() {
           telegramToken,
           telegramUserId,
           aiProvider,
-          apiKey: aiProvider !== 'gemini' && aiProvider !== 'groq' ? apiKey : undefined,
+          apiKey,
           plan
         })
       })
@@ -294,7 +294,8 @@ function OnboardContent() {
             <div className="space-y-6">
               <div className="space-y-3">
                 {[
-                  { id: 'gemini', name: 'Google Gemini (Free)', desc: 'Gemini 2.0 Flash — Fast, smart, and free', recommended: true },
+                  { id: 'openrouter', name: 'OpenRouter (Free)', desc: 'Access free models — Gemini, Llama, and more', recommended: true },
+                  { id: 'gemini', name: 'Google Gemini', desc: 'Gemini 2.0 Flash — Direct from Google' },
                   { id: 'anthropic', name: 'Anthropic', desc: 'Claude — Best quality (requires API key)' },
                   { id: 'openai', name: 'OpenAI', desc: 'GPT-4 — Popular choice (requires API key)' },
                   { id: 'groq', name: 'Groq', desc: 'Llama 3 — Ultra fast (requires API key)' }
@@ -323,16 +324,70 @@ function OnboardContent() {
                 ))}
               </div>
               
-              {aiProvider !== 'gemini' && aiProvider !== 'groq' && (
+              {/* OpenRouter instructions */}
+              {aiProvider === 'openrouter' && (
+                <div className="bg-gray-800 rounded-xl p-6">
+                  <h3 className="font-semibold mb-4">Get your free OpenRouter API key:</h3>
+                  <ol className="space-y-3 text-gray-300 text-sm">
+                    <li className="flex gap-3">
+                      <span className="bg-lobster-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs flex-shrink-0">1</span>
+                      <span>Go to <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-lobster-400 underline">openrouter.ai/keys</a></span>
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="bg-lobster-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs flex-shrink-0">2</span>
+                      <span>Sign up with Google (free, no credit card)</span>
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="bg-lobster-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs flex-shrink-0">3</span>
+                      <span>Click "Create Key" and copy it</span>
+                    </li>
+                  </ol>
+                  <p className="text-xs text-gray-500 mt-4">
+                    Free tier includes: Gemini 2.0 Flash, Llama 3.2, and more — no charges ever
+                  </p>
+                </div>
+              )}
+              
+              {/* Gemini instructions */}
+              {aiProvider === 'gemini' && (
+                <div className="bg-gray-800 rounded-xl p-6">
+                  <h3 className="font-semibold mb-4">Get your Gemini API key:</h3>
+                  <ol className="space-y-3 text-gray-300 text-sm">
+                    <li className="flex gap-3">
+                      <span className="bg-lobster-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs flex-shrink-0">1</span>
+                      <span>Go to <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-lobster-400 underline">aistudio.google.com/apikey</a></span>
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="bg-lobster-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs flex-shrink-0">2</span>
+                      <span>Sign in with Google and click "Create API key"</span>
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="bg-lobster-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs flex-shrink-0">3</span>
+                      <span>Copy the key and paste below</span>
+                    </li>
+                  </ol>
+                </div>
+              )}
+              
+              {/* API Key input for providers that need it */}
+              {(aiProvider === 'openrouter' || aiProvider === 'gemini' || aiProvider === 'anthropic' || aiProvider === 'openai' || aiProvider === 'groq') && (
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-2">
-                    {aiProvider === 'anthropic' ? 'Anthropic' : 'OpenAI'} API Key
+                    {aiProvider === 'openrouter' ? 'OpenRouter' : 
+                     aiProvider === 'gemini' ? 'Gemini' :
+                     aiProvider === 'anthropic' ? 'Anthropic' : 
+                     aiProvider === 'groq' ? 'Groq' : 'OpenAI'} API Key
                   </label>
                   <input
                     type="password"
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
-                    placeholder={aiProvider === 'anthropic' ? 'sk-ant-...' : 'sk-...'}
+                    placeholder={
+                      aiProvider === 'openrouter' ? 'sk-or-v1-...' :
+                      aiProvider === 'gemini' ? 'AIza...' :
+                      aiProvider === 'anthropic' ? 'sk-ant-...' : 
+                      aiProvider === 'groq' ? 'gsk_...' : 'sk-...'
+                    }
                     className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-lobster-500"
                   />
                 </div>
@@ -347,7 +402,7 @@ function OnboardContent() {
                 </button>
                 <button
                   onClick={() => setStep('deploy')}
-                  disabled={aiProvider !== 'gemini' && aiProvider !== 'groq' && !apiKey}
+                  disabled={!apiKey}
                   className="flex-1 bg-lobster-500 py-3 rounded-lg font-semibold hover:bg-lobster-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Continue →
@@ -372,7 +427,10 @@ function OnboardContent() {
                   </div>
                   <div className="flex justify-between">
                     <dt className="text-gray-400">AI Provider</dt>
-                    <dd>{aiProvider === 'groq' ? 'Groq (Free)' : aiProvider}</dd>
+                    <dd>{aiProvider === 'openrouter' ? 'OpenRouter (Free)' : 
+                         aiProvider === 'gemini' ? 'Google Gemini' :
+                         aiProvider === 'groq' ? 'Groq' : 
+                         aiProvider.charAt(0).toUpperCase() + aiProvider.slice(1)}</dd>
                   </div>
                   <div className="flex justify-between">
                     <dt className="text-gray-400">Plan</dt>
