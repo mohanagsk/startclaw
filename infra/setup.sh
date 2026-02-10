@@ -98,10 +98,6 @@ log_info "Configuring Caddy..."
 EXTERNAL_IP=$(curl -s ifconfig.me)
 cat > /etc/caddy/Caddyfile << EOF
 # StartClaw Caddy Configuration
-# API endpoint
-{
-    admin off
-}
 
 # Health check endpoint
 :80 {
