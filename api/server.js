@@ -125,7 +125,7 @@ const createConfig = (telegramToken, aiProvider, apiKey, ownerIds) => {
         config.agents = { defaults: { model: 'groq/llama-3.3-70b-versatile' } };
     } else if (aiProvider === 'anthropic' && apiKey) {
         config.providers.anthropic = { apiKey };
-    } else if (apiProvider === 'openai' && apiKey) {
+    } else if (aiProvider === 'openai' && apiKey) {
         config.providers.openai = { apiKey };
     } else if (GROQ_API_KEY) {
         // Fallback to Groq
