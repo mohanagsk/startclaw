@@ -202,14 +202,21 @@ app.post('/provision', authMiddleware, async (req, res) => {
         const port = await getNextPort();
         
         // Set resource limits based on plan
-        let memory = '512m';
+        let memory = '768m';
         let cpus = '0.5';
-        if (plan === 'pro') {
+        let heapSize = '384';
+        if (plan === 'starter') {
+            memory = '768m';
+            cpus = '0.5';
+            heapSize = '512';
+        } else if (plan === 'pro') {
             memory = '1g';
             cpus = '1.0';
+            heapSize = '768';
         } else if (plan === 'power') {
             memory = '2g';
             cpus = '2.0';
+            heapSize = '1536';
         }
         
         // Create volume
@@ -224,7 +231,7 @@ app.post('/provision', authMiddleware, async (req, res) => {
         // Copy config to volume using a temp container
         await runCommand(`docker run --rm -v ${volumeName}:/home/node/.openclaw -v ${configDir}:/config alpine sh -c "mkdir -p /home/node/.openclaw/config && cp /config/openclaw.json /home/node/.openclaw/config/"`);
         
-        // Start container
+        // Start container with increased Node.js heap
         await runCommand(`docker run -d \
             --name ${containerName} \
             --restart unless-stopped \
@@ -232,6 +239,7 @@ app.post('/provision', authMiddleware, async (req, res) => {
             -p ${port}:18789 \
             --memory="${memory}" \
             --cpus="${cpus}" \
+            -e NODE_OPTIONS="--max-old-space-size=${heapSize}" \
             ghcr.io/openclaw/openclaw:latest`);
         
         // Save port mapping
