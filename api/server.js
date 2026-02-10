@@ -1,6 +1,9 @@
 /**
- * StartClaw Provisioning API
+ * 2OpenClaw Provisioning API
  * Handles creating, managing, and monitoring OpenClaw containers
+ * 
+ * IMPORTANT: This API creates OpenClaw instances with the correct config format.
+ * See /docs/LESSONS_LEARNED.md for details on the config schema.
  */
 
 const express = require('express');
@@ -98,44 +101,86 @@ ${subdomain} {
     // Append to Caddyfile
     await fs.appendFile(CADDY_FILE, routeBlock);
     
-    // Reload Caddy
+    // Reload Caddy (not restart - requires admin endpoint enabled)
     await runCommand('systemctl reload caddy');
     
     return subdomain;
 };
 
-// Helper: Create OpenClaw config
-const createConfig = (telegramToken, aiProvider, apiKey, ownerIds) => {
+/**
+ * Create OpenClaw config with CORRECT schema
+ * 
+ * CRITICAL LESSONS LEARNED:
+ * 1. API keys go under env.vars, NOT providers
+ * 2. Telegram uses botToken, NOT token
+ * 3. channels.telegram.enabled AND plugins.entries.telegram.enabled must BOTH be true
+ * 4. gateway.mode must be "local"
+ * 5. gateway.auth needs mode + token (object format)
+ * 6. agents.defaults.model.primary (object with primary key, not string)
+ * 7. Config file goes at /home/node/.openclaw/openclaw.json (root, not config subfolder)
+ */
+const createConfig = (telegramToken, aiProvider, apiKey, ownerIds, gatewayToken) => {
     const config = {
-        providers: {},
+        env: {
+            vars: {}
+        },
+        agents: {
+            defaults: {
+                model: {
+                    primary: 'anthropic/claude-sonnet-4-5'  // Default to Claude
+                }
+            }
+        },
         channels: {
             telegram: {
-                token: telegramToken
+                enabled: true,
+                botToken: telegramToken
             }
         },
         gateway: {
-            bind: "0.0.0.0",
-            port: 18789
+            mode: 'local',
+            port: 18789,
+            auth: {
+                mode: 'token',
+                token: gatewayToken || crypto.randomBytes(16).toString('hex')
+            }
+        },
+        plugins: {
+            entries: {
+                telegram: {
+                    enabled: true
+                }
+            }
         }
     };
     
-    // Set AI provider
-    if (aiProvider === 'groq' && GROQ_API_KEY) {
-        config.providers.groq = { apiKey: GROQ_API_KEY };
-        config.agents = { defaults: { model: 'groq/llama-3.3-70b-versatile' } };
+    // Set AI provider API key and model
+    if (aiProvider === 'groq') {
+        const groqKey = apiKey || GROQ_API_KEY;
+        if (groqKey) {
+            config.env.vars.GROQ_API_KEY = groqKey;
+            // Use gemma2-9b-it for free tier (higher TPM limits than llama)
+            config.agents.defaults.model.primary = 'groq/gemma2-9b-it';
+        }
     } else if (aiProvider === 'anthropic' && apiKey) {
-        config.providers.anthropic = { apiKey };
+        config.env.vars.ANTHROPIC_API_KEY = apiKey;
+        config.agents.defaults.model.primary = 'anthropic/claude-sonnet-4-5';
     } else if (aiProvider === 'openai' && apiKey) {
-        config.providers.openai = { apiKey };
+        config.env.vars.OPENAI_API_KEY = apiKey;
+        config.agents.defaults.model.primary = 'openai/gpt-4o';
+    } else if (aiProvider === 'openrouter' && apiKey) {
+        config.env.vars.OPENROUTER_API_KEY = apiKey;
+        config.agents.defaults.model.primary = 'openrouter/anthropic/claude-3.5-sonnet';
     } else if (GROQ_API_KEY) {
-        // Fallback to Groq
-        config.providers.groq = { apiKey: GROQ_API_KEY };
-        config.agents = { defaults: { model: 'groq/llama-3.3-70b-versatile' } };
+        // Fallback to Groq free tier
+        config.env.vars.GROQ_API_KEY = GROQ_API_KEY;
+        config.agents.defaults.model.primary = 'groq/gemma2-9b-it';
     }
     
-    // Set owner IDs
+    // Set owner IDs for DM allowlist
     if (ownerIds && ownerIds.length > 0) {
-        config.channels.telegram.ownerNumbers = ownerIds;
+        config.channels.telegram.allowFrom = ownerIds.map(String);
+        config.channels.telegram.dmPolicy = 'allowlist';
     }
     
     return config;
@@ -151,7 +196,7 @@ app.get('/health', (req, res) => {
 // List all instances
 app.get('/instances', authMiddleware, async (req, res) => {
     try {
-        const { stdout } = await runCommand('docker ps --filter "name=openclaw-" --format "{{.Names}},{{.Status}},{{.Ports}}"');
+        const { stdout } = await runCommand('docker ps -a --filter "name=openclaw-" --format "{{.Names}},{{.Status}},{{.Ports}}"');
         const instances = stdout.trim().split('\n').filter(Boolean).map(line => {
             const [name, status, ports] = line.split(',');
             const userId = name.replace('openclaw-', '');
@@ -174,7 +219,14 @@ app.get('/instances/:userId', authMiddleware, async (req, res) => {
         const port = await getUserPort(userId);
         const subdomain = port ? `${userId}.${EXTERNAL_IP}.nip.io` : null;
         
-        res.json({ userId, status, startedAt, port, subdomain, url: subdomain ? `https://${subdomain}` : null });
+        // Try to read user data for plan info
+        let plan = 'free';
+        try {
+            const userData = JSON.parse(await fs.readFile(path.join(DATA_DIR, 'users', `${userId}.json`), 'utf8'));
+            plan = userData.plan || 'free';
+        } catch {}
+        
+        res.json({ userId, status, startedAt, port, subdomain, url: subdomain ? `https://${subdomain}` : null, plan });
     } catch (error) {
         res.status(404).json({ error: 'Instance not found' });
     }
@@ -189,7 +241,7 @@ app.post('/provision', authMiddleware, async (req, res) => {
     }
     
     const containerName = `openclaw-${userId}`;
-    const volumeName = `openclaw-${userId}`;
+    const dataDir = path.join(DATA_DIR, 'instances', userId);
     
     try {
         // Check if already exists
@@ -202,40 +254,49 @@ app.post('/provision', authMiddleware, async (req, res) => {
         const port = await getNextPort();
         
         // Set resource limits based on plan
-        let memory = '768m';
+        let memory = '1g';
         let cpus = '0.5';
-        let heapSize = '384';
+        let heapSize = '512';
         if (plan === 'starter') {
-            memory = '768m';
+            memory = '1g';
             cpus = '0.5';
             heapSize = '512';
         } else if (plan === 'pro') {
-            memory = '1g';
+            memory = '1536m';
             cpus = '1.0';
-            heapSize = '768';
+            heapSize = '1024';
         } else if (plan === 'power') {
             memory = '2g';
             cpus = '2.0';
             heapSize = '1536';
         }
         
-        // Create volume
-        await runCommand(`docker volume create ${volumeName}`);
+        // Generate gateway token for this instance
+        const gatewayToken = crypto.randomBytes(16).toString('hex');
         
-        // Create config
-        const config = createConfig(telegramToken, aiProvider, apiKey, ownerIds);
-        const configDir = path.join(DATA_DIR, 'configs', userId);
-        await fs.mkdir(configDir, { recursive: true });
-        await fs.writeFile(path.join(configDir, 'openclaw.json'), JSON.stringify(config, null, 2));
+        // Create config with CORRECT format
+        const config = createConfig(telegramToken, aiProvider, apiKey, ownerIds, gatewayToken);
         
-        // Copy config to volume using a temp container
-        await runCommand(`docker run --rm -v ${volumeName}:/home/node/.openclaw -v ${configDir}:/config alpine sh -c "mkdir -p /home/node/.openclaw/config && cp /config/openclaw.json /home/node/.openclaw/config/"`);
+        // Create data directory with correct permissions
+        await fs.mkdir(dataDir, { recursive: true });
         
-        // Start container with increased Node.js heap
+        // Write config to the data directory
+        // IMPORTANT: Config goes at openclaw.json (root level), NOT config/openclaw.json
+        await fs.writeFile(
+            path.join(dataDir, 'openclaw.json'), 
+            JSON.stringify(config, null, 2)
+        );
+        
+        // Set ownership to uid 1000 (node user in container)
+        await runCommand(`chown -R 1000:1000 ${dataDir}`);
+        await runCommand(`chmod 700 ${dataDir}`);
+        
+        // Start container with bind mount (NOT named volume)
+        // This allows the config to be read/written properly
         await runCommand(`docker run -d \
             --name ${containerName} \
             --restart unless-stopped \
-            -v ${volumeName}:/home/node/.openclaw \
+            -v ${dataDir}:/home/node/.openclaw \
             -p ${port}:18789 \
             --memory="${memory}" \
             --cpus="${cpus}" \
@@ -253,10 +314,13 @@ app.post('/provision', authMiddleware, async (req, res) => {
             userId,
             port,
             subdomain,
+            gatewayToken,
             plan: plan || 'free',
+            aiProvider: aiProvider || 'groq',
             createdAt: new Date().toISOString(),
             expiresAt: plan === 'free' ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() : null
         };
+        await fs.mkdir(path.join(DATA_DIR, 'users'), { recursive: true });
         await fs.writeFile(path.join(DATA_DIR, 'users', `${userId}.json`), JSON.stringify(userData, null, 2));
         
         res.json({
@@ -265,6 +329,7 @@ app.post('/provision', authMiddleware, async (req, res) => {
             subdomain,
             url: `https://${subdomain}`,
             port,
+            gatewayToken,
             plan: plan || 'free'
         });
         
@@ -272,10 +337,11 @@ app.post('/provision', authMiddleware, async (req, res) => {
         // Cleanup on failure
         try {
             await runCommand(`docker rm -f ${containerName}`);
-            await runCommand(`docker volume rm ${volumeName}`);
+            await fs.rm(dataDir, { recursive: true, force: true });
         } catch {}
         
-        res.status(500).json({ error: error.message || error.stderr });
+        console.error('Provision error:', error);
+        res.status(500).json({ error: error.message || error.stderr || 'Provisioning failed' });
     }
 });
 
@@ -323,15 +389,15 @@ app.delete('/instances/:userId', authMiddleware, async (req, res) => {
     const { userId } = req.params;
     const { keepBackup } = req.query;
     const containerName = `openclaw-${userId}`;
-    const volumeName = `openclaw-${userId}`;
+    const dataDir = path.join(DATA_DIR, 'instances', userId);
     
     try {
         // Stop and remove container
         await runCommand(`docker rm -f ${containerName}`);
         
-        // Remove volume (unless keeping backup)
+        // Remove data directory (unless keeping backup)
         if (keepBackup !== 'true') {
-            await runCommand(`docker volume rm ${volumeName}`);
+            await fs.rm(dataDir, { recursive: true, force: true });
         }
         
         // TODO: Remove from Caddy config
@@ -376,10 +442,10 @@ app.post('/instances/:userId/upgrade', authMiddleware, async (req, res) => {
     const { plan } = req.body;
     const containerName = `openclaw-${userId}`;
     
-    let memory = '512m';
+    let memory = '1g';
     let cpus = '0.5';
     if (plan === 'pro') {
-        memory = '1g';
+        memory = '1536m';
         cpus = '1.0';
     } else if (plan === 'power') {
         memory = '2g';
@@ -419,12 +485,12 @@ app.post('/validate/telegram', async (req, res) => {
 // Create data directories
 const initDataDirs = async () => {
     await fs.mkdir(path.join(DATA_DIR, 'users'), { recursive: true });
-    await fs.mkdir(path.join(DATA_DIR, 'configs'), { recursive: true });
+    await fs.mkdir(path.join(DATA_DIR, 'instances'), { recursive: true });
 };
 
 // Start server
 initDataDirs().then(() => {
     app.listen(PORT, () => {
-        console.log(`🦞 StartClaw API running on port ${PORT}`);
+        console.log(`🦞 2OpenClaw API running on port ${PORT}`);
     });
 });
