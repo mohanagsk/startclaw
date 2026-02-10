@@ -1,7 +1,7 @@
 {
-  "name": "startclaw-api",
+  "name": "2openclaw-api",
   "version": "1.0.0",
-  "description": "StartClaw Provisioning API",
+  "description": "2OpenClaw Provisioning API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
