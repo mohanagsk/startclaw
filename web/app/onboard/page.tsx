@@ -1,0 +1,373 @@
+'use client'
+
+import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+
+type Step = 'telegram' | 'token' | 'ai' | 'deploy' | 'done'
+
+export default function Onboard() {
+  const searchParams = useSearchParams()
+  const plan = searchParams.get('plan') || 'free'
+  
+  const [step, setStep] = useState<Step>('telegram')
+  const [telegramToken, setTelegramToken] = useState('')
+  const [aiProvider, setAiProvider] = useState('groq')
+  const [apiKey, setApiKey] = useState('')
+  const [isValidating, setIsValidating] = useState(false)
+  const [isDeploying, setIsDeploying] = useState(false)
+  const [error, setError] = useState('')
+  const [result, setResult] = useState<{ subdomain: string; url: string } | null>(null)
+  const [botInfo, setBotInfo] = useState<{ username: string } | null>(null)
+
+  const validateToken = async () => {
+    setIsValidating(true)
+    setError('')
+    
+    try {
+      const res = await fetch('/api/validate-telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: telegramToken })
+      })
+      
+      const data = await res.json()
+      
+      if (data.valid) {
+        setBotInfo(data.bot)
+        setStep('ai')
+      } else {
+        setError(data.error || 'Invalid token')
+      }
+    } catch (e) {
+      setError('Failed to validate token')
+    } finally {
+      setIsValidating(false)
+    }
+  }
+
+  const deploy = async () => {
+    setIsDeploying(true)
+    setError('')
+    
+    try {
+      const res = await fetch('/api/provision', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegramToken,
+          aiProvider,
+          apiKey: aiProvider !== 'groq' ? apiKey : undefined,
+          plan
+        })
+      })
+      
+      const data = await res.json()
+      
+      if (data.success) {
+        setResult(data)
+        setStep('done')
+      } else {
+        setError(data.error || 'Deployment failed')
+      }
+    } catch (e) {
+      setError('Failed to deploy')
+    } finally {
+      setIsDeploying(false)
+    }
+  }
+
+  return (
+    <main className="min-h-screen py-12 px-6">
+      <div className="mx-auto max-w-2xl">
+        {/* Header */}
+        <div className="text-center mb-12">
+          <div className="text-5xl mb-4">🦞</div>
+          <h1 className="text-3xl font-bold">Deploy Your AI Assistant</h1>
+          <p className="text-gray-400 mt-2">
+            {plan === 'free' ? '7-day free trial' : `${plan.charAt(0).toUpperCase() + plan.slice(1)} plan`}
+          </p>
+        </div>
+        
+        {/* Progress */}
+        <div className="flex items-center justify-center gap-2 mb-12">
+          {['telegram', 'token', 'ai', 'deploy', 'done'].map((s, i) => (
+            <div key={s} className="flex items-center">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
+                step === s ? 'bg-lobster-500' : 
+                ['telegram', 'token', 'ai', 'deploy', 'done'].indexOf(step) > i ? 'bg-green-500' : 'bg-gray-800'
+              }`}>
+                {['telegram', 'token', 'ai', 'deploy', 'done'].indexOf(step) > i ? '✓' : i + 1}
+              </div>
+              {i < 4 && <div className="w-8 h-0.5 bg-gray-800" />}
+            </div>
+          ))}
+        </div>
+
+        {/* Step Content */}
+        <div className="bg-gray-900 rounded-2xl p-8 border border-gray-800">
+          
+          {/* Step 1: Create Telegram Bot */}
+          {step === 'telegram' && (
+            <div>
+              <h2 className="text-2xl font-bold mb-6">Step 1: Create Telegram Bot</h2>
+              
+              <div className="space-y-6">
+                <div className="bg-gray-800 rounded-xl p-6">
+                  <h3 className="font-semibold mb-4">Follow these steps:</h3>
+                  <ol className="space-y-4 text-gray-300">
+                    <li className="flex gap-3">
+                      <span className="bg-lobster-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm flex-shrink-0">1</span>
+                      <span>Open Telegram and search for <code className="bg-gray-700 px-2 py-0.5 rounded">@BotFather</code></span>
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="bg-lobster-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm flex-shrink-0">2</span>
+                      <span>Send the command <code className="bg-gray-700 px-2 py-0.5 rounded">/newbot</code></span>
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="bg-lobster-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm flex-shrink-0">3</span>
+                      <span>Choose a name for your bot (e.g., "My AI Assistant")</span>
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="bg-lobster-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm flex-shrink-0">4</span>
+                      <span>Choose a username ending in <code className="bg-gray-700 px-2 py-0.5 rounded">_bot</code></span>
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="bg-lobster-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm flex-shrink-0">5</span>
+                      <span>Copy the <strong>API token</strong> BotFather gives you</span>
+                    </li>
+                  </ol>
+                </div>
+                
+                <a 
+                  href="https://t.me/BotFather" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="block w-full bg-blue-500 text-white py-3 rounded-lg text-center font-semibold hover:bg-blue-400 transition-colors"
+                >
+                  Open @BotFather →
+                </a>
+                
+                <button
+                  onClick={() => setStep('token')}
+                  className="block w-full bg-lobster-500 py-3 rounded-lg font-semibold hover:bg-lobster-400 transition-colors"
+                >
+                  I have my token →
+                </button>
+              </div>
+            </div>
+          )}
+          
+          {/* Step 2: Enter Token */}
+          {step === 'token' && (
+            <div>
+              <h2 className="text-2xl font-bold mb-6">Step 2: Enter Your Bot Token</h2>
+              
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">
+                    Telegram Bot Token
+                  </label>
+                  <input
+                    type="text"
+                    value={telegramToken}
+                    onChange={(e) => setTelegramToken(e.target.value)}
+                    placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-lobster-500"
+                  />
+                  <p className="text-sm text-gray-500 mt-2">
+                    Paste the token you received from @BotFather
+                  </p>
+                </div>
+                
+                {error && (
+                  <div className="bg-red-500/10 border border-red-500/50 rounded-lg px-4 py-3 text-red-400">
+                    {error}
+                  </div>
+                )}
+                
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setStep('telegram')}
+                    className="px-6 py-3 rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors"
+                  >
+                    ← Back
+                  </button>
+                  <button
+                    onClick={validateToken}
+                    disabled={!telegramToken || isValidating}
+                    className="flex-1 bg-lobster-500 py-3 rounded-lg font-semibold hover:bg-lobster-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isValidating ? 'Validating...' : 'Validate Token →'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Step 3: Choose AI */}
+          {step === 'ai' && (
+            <div>
+              <h2 className="text-2xl font-bold mb-2">Step 3: Choose Your AI</h2>
+              {botInfo && (
+                <p className="text-green-400 mb-6">✓ Bot validated: @{botInfo.username}</p>
+              )}
+              
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  {[
+                    { id: 'groq', name: 'Groq (Free)', desc: 'Llama 3.3 70B — Fast and free', recommended: true },
+                    { id: 'anthropic', name: 'Anthropic', desc: 'Claude — Best quality (requires API key)' },
+                    { id: 'openai', name: 'OpenAI', desc: 'GPT-4 — Popular choice (requires API key)' }
+                  ].map((provider) => (
+                    <button
+                      key={provider.id}
+                      onClick={() => setAiProvider(provider.id)}
+                      className={`w-full text-left p-4 rounded-xl border ${
+                        aiProvider === provider.id 
+                          ? 'border-lobster-500 bg-lobster-500/10' 
+                          : 'border-gray-700 hover:border-gray-600'
+                      } transition-colors`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-semibold">{provider.name}</div>
+                          <div className="text-sm text-gray-400">{provider.desc}</div>
+                        </div>
+                        {provider.recommended && (
+                          <span className="bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded-full">
+                            Recommended
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                
+                {aiProvider !== 'groq' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-2">
+                      {aiProvider === 'anthropic' ? 'Anthropic' : 'OpenAI'} API Key
+                    </label>
+                    <input
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder={aiProvider === 'anthropic' ? 'sk-ant-...' : 'sk-...'}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-lobster-500"
+                    />
+                  </div>
+                )}
+                
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setStep('token')}
+                    className="px-6 py-3 rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors"
+                  >
+                    ← Back
+                  </button>
+                  <button
+                    onClick={() => setStep('deploy')}
+                    disabled={aiProvider !== 'groq' && !apiKey}
+                    className="flex-1 bg-lobster-500 py-3 rounded-lg font-semibold hover:bg-lobster-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Continue →
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Step 4: Deploy */}
+          {step === 'deploy' && (
+            <div>
+              <h2 className="text-2xl font-bold mb-6">Step 4: Deploy Your Assistant</h2>
+              
+              <div className="space-y-6">
+                <div className="bg-gray-800 rounded-xl p-6">
+                  <h3 className="font-semibold mb-4">Summary</h3>
+                  <dl className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <dt className="text-gray-400">Telegram Bot</dt>
+                      <dd>@{botInfo?.username}</dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-gray-400">AI Provider</dt>
+                      <dd>{aiProvider === 'groq' ? 'Groq (Free)' : aiProvider}</dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-gray-400">Plan</dt>
+                      <dd>{plan === 'free' ? '7-day Free Trial' : plan}</dd>
+                    </div>
+                  </dl>
+                </div>
+                
+                {error && (
+                  <div className="bg-red-500/10 border border-red-500/50 rounded-lg px-4 py-3 text-red-400">
+                    {error}
+                  </div>
+                )}
+                
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setStep('ai')}
+                    className="px-6 py-3 rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors"
+                  >
+                    ← Back
+                  </button>
+                  <button
+                    onClick={deploy}
+                    disabled={isDeploying}
+                    className="flex-1 bg-lobster-500 py-3 rounded-lg font-semibold hover:bg-lobster-400 transition-colors disabled:opacity-50"
+                  >
+                    {isDeploying ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Deploying...
+                      </span>
+                    ) : (
+                      '🚀 Deploy Now'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Step 5: Done */}
+          {step === 'done' && result && (
+            <div className="text-center">
+              <div className="text-6xl mb-6">🎉</div>
+              <h2 className="text-2xl font-bold mb-2">You're Live!</h2>
+              <p className="text-gray-400 mb-8">Your AI assistant is ready to chat.</p>
+              
+              <div className="bg-gray-800 rounded-xl p-6 mb-8">
+                <p className="text-sm text-gray-400 mb-2">Open Telegram and message:</p>
+                <p className="text-xl font-mono">@{botInfo?.username}</p>
+              </div>
+              
+              <div className="space-y-4">
+                <a
+                  href={`https://t.me/${botInfo?.username}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-full bg-blue-500 py-3 rounded-lg font-semibold hover:bg-blue-400 transition-colors"
+                >
+                  Open in Telegram →
+                </a>
+                <a
+                  href="/dashboard"
+                  className="block w-full bg-gray-800 py-3 rounded-lg font-semibold hover:bg-gray-700 transition-colors"
+                >
+                  Go to Dashboard
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </main>
+  )
+}
